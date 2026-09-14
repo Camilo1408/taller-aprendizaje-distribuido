@@ -156,6 +156,21 @@ pip install -r requirements.txt
 (Si usaste `pyenv`, reemplaza `python3.11` por `python`, ya que `pyenv
 local` deja esa version activa por defecto en la carpeta.)
 
+> **Importante:** `requirements.txt` fija versiones **exactas** (no rangos)
+> a proposito. `MultiWorkerMirroredStrategy` sincroniza gradientes por red
+> entre procesos, y si dos maquinas quedan con versiones distintas de
+> TensorFlow (por instalar en momentos distintos, por ejemplo) el
+> entrenamiento falla a mitad de camino con errores criticos como
+> `INVALID_ARGUMENT: .../device:CPU:0 unknown device` durante el
+> `RingReduce` (ver seccion 12). Si ya habias instalado antes de que esto se
+> corrigiera en el repo, en las 3 maquinas:
+> ```bash
+> git pull
+> pip install -r requirements.txt --upgrade
+> python -c "import tensorflow as tf; print(tf.__version__)"
+> ```
+> y confirmar que las 3 imprimen exactamente lo mismo.
+
 A partir de aqui, todos los comandos de esta guia asumen que el entorno
 virtual esta activado (`source .venv/bin/activate`); si abres una terminal
 nueva o te conectas de nuevo por SSH, hay que activarlo otra vez antes de
@@ -423,6 +438,21 @@ y la logica de distribucion no cambian.
 - **Version distinta de TensorFlow entre maquinas**: puede causar errores de
   protocolo al conectar los workers; usar la misma version en las 3 (fijada
   en `requirements.txt`, instalada dentro del `.venv` de cada una).
+- **`InvalidArgumentError` / `Aborting RingReduce` / `.../device:CPU:0
+  unknown device` a mitad del entrenamiento**: el sincronismo de gradientes
+  entre los 3 workers quedo en un estado inconsistente. Las 2 causas mas
+  comunes:
+  1. **Solo se reinicio 1 o 2 workers, no los 3.** Si un worker se cae o lo
+     relanzas para corregir algo (ej. activar el `.venv`) mientras los otros
+     siguen corriendo desde un intento anterior, el grupo de coordinacion
+     queda desincronizado. Solucion: matar los 3 procesos
+     (`pkill -f train.py` en cada maquina, o `Ctrl+C` donde este visible) y
+     volver a lanzar `train.py` en las 3 **al mismo tiempo, desde cero**.
+  2. **Versiones de TensorFlow distintas entre maquinas** (ver el punto
+     anterior): confirmar con
+     `python -c "import tensorflow as tf; print(tf.__version__)"` en las 3
+     y reinstalar con `pip install -r requirements.txt --upgrade` donde no
+     coincida.
 - **Rutas relativas distintas**: `train.py` busca `data/` en la carpeta
   actual; ejecutar siempre desde la carpeta del proyecto (`cd
   taller-aprendizaje-distribuido`) en las 3 maquinas, con el `.venv`
