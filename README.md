@@ -334,7 +334,33 @@ sin la complejidad extra de la red fisica.
    `train.py` este corriendo) con `nc -zv <ip> 12345`.
 
 3. Definir el `TF_CONFIG` de cada maquina **antes** de ejecutar `train.py`.
-   Ejemplo con IPs de muestra (reemplazar por las reales):
+
+   **Opcion recomendada: usar `run_worker.sh`.** Escribir el JSON de
+   `TF_CONFIG` a mano en 3 terminales SSH distintas es facil de arruinar
+   (un indice mal copiado, una IP de mas o de menos — ya nos paso). El
+   script `run_worker.sh` arma el `TF_CONFIG` automaticamente y activa el
+   `.venv` si hace falta. Editar **una sola vez** las 3 IPs al principio del
+   archivo (deben quedar iguales en las 3 maquinas, en el mismo orden):
+   ```bash
+   IP_0="192.168.1.10"   # maquina que sera el worker 0
+   IP_1="192.168.1.11"   # maquina que sera el worker 1
+   IP_2="192.168.1.12"   # maquina que sera el worker 2
+   ```
+   y despues, en cada maquina, correr solo (ajustando el indice segun cual
+   IP le corresponde a esa maquina):
+   ```bash
+   bash run_worker.sh 0 10   # en la maquina IP_0
+   bash run_worker.sh 1 10   # en la maquina IP_1
+   bash run_worker.sh 2 10   # en la maquina IP_2
+   ```
+   (`bash run_worker.sh ...` en vez de `./run_worker.sh` evita tener que
+   marcarlo como ejecutable). El segundo numero son las epocas. Esto ademas
+   guarda una copia de todo lo que imprime cada maquina en
+   `train_worker<N>.log`, util para revisar o compartir despues sin
+   depender de una foto de pantalla.
+
+   **Opcion manual** (si prefieres no usar el script), con IPs de muestra
+   (reemplazar por las reales):
 
    | Maquina | IP              | index |
    |---------|-----------------|-------|
@@ -345,18 +371,21 @@ sin la complejidad extra de la red fisica.
    En la maquina A (con el entorno virtual activado):
    ```bash
    export TF_CONFIG='{"cluster": {"worker": ["192.168.1.10:12345","192.168.1.11:12345","192.168.1.12:12345"]}, "task": {"type": "worker", "index": 0}}'
-   python train.py --epochs 10
+   python train.py --epochs 10 2>&1 | tee train_worker0.log
    ```
-   En la maquina B (mismo comando, cambia solo `"index": 1`):
+   En la maquina B (mismo comando, cambia `"index": 1` y el nombre del log):
    ```bash
    export TF_CONFIG='{"cluster": {"worker": ["192.168.1.10:12345","192.168.1.11:12345","192.168.1.12:12345"]}, "task": {"type": "worker", "index": 1}}'
-   python train.py --epochs 10
+   python train.py --epochs 10 2>&1 | tee train_worker1.log
    ```
    En la maquina C (`"index": 2`):
    ```bash
    export TF_CONFIG='{"cluster": {"worker": ["192.168.1.10:12345","192.168.1.11:12345","192.168.1.12:12345"]}, "task": {"type": "worker", "index": 2}}'
-   python train.py --epochs 10
+   python train.py --epochs 10 2>&1 | tee train_worker2.log
    ```
+   En ambas opciones, **revisar que la lista de IPs en `worker` tenga
+   siempre 3 elementos y que el `index` vaya de 0 a 2** (con solo 2 IPs en
+   la lista, el maximo `index` valido es 1, no 2).
 
 4. **Lanzar los 3 comandos casi al mismo tiempo.** Cada proceso se queda
    esperando a que las otras 2 maquinas respondan en su IP:puerto antes de
