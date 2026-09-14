@@ -6,3 +6,5 @@ data/
 logs/
 workertemp_*/
 train_worker*.log
+report_assets/
+INFORME_FINAL.pdf
