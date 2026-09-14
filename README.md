@@ -170,17 +170,98 @@ correr cualquier script.
 
 ## 6. Preparar el dataset (train / val / test)
 
-En **cada una de las 3 maquinas** (con el entorno virtual activado; o en una
-sola maquina y despues copiar la carpeta `data/` generada a las otras dos
-con `scp -r`, para garantizar que las 3 usan exactamente los mismos datos):
+`data_prep.py` descarga Fashion-MNIST (~30 MB, desde los servidores de
+Google que usa Keras internamente), normaliza los pixeles a `[0, 1]`, separa
+train/val con una semilla fija, y guarda 3 archivos en `data/`:
+
+```
+data/fashion_mnist_train.npz   (~38 MB)
+data/fashion_mnist_val.npz     (~8 MB)
+data/fashion_mnist_test.npz    (~8 MB)
+```
+
+Hay dos formas de dejar estos 3 archivos en las 3 maquinas. Cualquiera de
+las dos es valida; la diferencia es solo cuantas maquinas necesitan salir a
+internet.
+
+### Metodo 1 (recomendado): generar una sola vez y copiar por SSH
+
+Solo la maquina A necesita internet. Las otras 2 reciben el dataset ya
+armado, byte por byte igual, sin depender de que su propia descarga
+funcione.
+
+**En la maquina A:**
+```bash
+source .venv/bin/activate
+python data_prep.py
+```
+Confirmar que quedaron los 3 archivos y anotar sus checksums (sirve para
+comparar despues que la copia llego integra):
+```bash
+ls -lh data/
+sha256sum data/*.npz > data/checksums.txt
+cat data/checksums.txt
+```
+
+**Copiar la carpeta `data/` a las maquinas B y C** (reemplaza `usuario` e
+`ip` por los reales; pide la contrasena/clave SSH de cada maquina):
+```bash
+scp -r data/ usuario@192.168.1.11:~/taller-aprendizaje-distribuido/
+scp -r data/ usuario@192.168.1.12:~/taller-aprendizaje-distribuido/
+```
+
+**En las maquinas B y C, verificar que la copia llego identica:**
+```bash
+sha256sum -c data/checksums.txt
+```
+Si dice `OK` en las 3 lineas, los datos son exactamente los mismos que en A.
+Si no tienen `scp`/SSH entre las maquinas, tambien sirve una USB o una
+carpeta compartida: lo unico que importa es que termines con la misma
+carpeta `data/` (con los mismos 3 `.npz`) en las 3 maquinas.
+
+### Metodo 2: descargar de forma independiente en cada maquina
+
+Si prefieres no depender de la conectividad entre las 3 maquinas, se puede
+correr esto **en cada una de las 3**:
 
 ```bash
+source .venv/bin/activate
 python data_prep.py
 ```
 
-Esto descarga Fashion-MNIST, normaliza los pixeles a `[0, 1]`, hace el split
-train/val con una semilla fija (para que el split sea igual si cada maquina
-lo genera por separado) y guarda 3 archivos `.npz` en `data/`.
+Como las 3 descargan del mismo origen y `data_prep.py` usa una semilla fija
+(`seed=42`) para el split train/val, el resultado es **identico** en las 3
+maquinas sin necesidad de copiar nada — pero esto asume que las 3 tienen
+salida a internet y que la descarga no falla en ninguna.
+
+### Si la descarga falla o el equipo no tiene internet directo
+
+- **Probar conectividad antes de correr el script:**
+  ```bash
+  curl -I https://storage.googleapis.com/tensorflow/tf-keras-datasets/train-images-idx3-ubyte.gz
+  ```
+  Si esto no responde (timeout, `Could not resolve host`, etc.), esa maquina
+  no tiene salida directa a internet: usar el **Metodo 1** (copiar `data/`
+  por SSH/USB) en vez de intentar que descargue por su cuenta.
+- **Red con proxy corporativo/universitario:** exportar el proxy antes de
+  correr el script:
+  ```bash
+  export https_proxy=http://proxy.miuniversidad.edu:puerto
+  export http_proxy=http://proxy.miuniversidad.edu:puerto
+  python data_prep.py
+  ```
+- **Descarga se corto a la mitad y quedo corrupta** (error tipo `Local file
+  hash does not match` o `gzip: invalid magic`): Keras cachea los `.gz`
+  originales en `~/.keras/datasets/fashion-mnist/`; borrar esa carpeta y
+  volver a correr `data_prep.py` para forzar una descarga limpia:
+  ```bash
+  rm -rf ~/.keras/datasets/fashion-mnist
+  python data_prep.py
+  ```
+- **Sin internet en ninguna de las 3 maquinas pero si en tu laptop:**
+  corre `data_prep.py` en tu laptop (o en esta misma maquina de desarrollo),
+  y luego copia la carpeta `data/` resultante a las 3 maquinas por USB o SCP
+  (Metodo 1, adaptado: aqui ninguna de las 3 descarga nada).
 
 ## 7. Probar antes de usar las 3 maquinas reales
 
@@ -327,6 +408,10 @@ y la logica de distribucion no cambian.
 
 ## 12. Problemas comunes
 
+- **Falla la descarga del dataset o la maquina no tiene internet**: ver la
+  seccion "Si la descarga falla o el equipo no tiene internet directo" en
+  el paso 6; en general, la salida mas segura es generar `data/` una sola
+  vez y copiarla por `scp`/USB a las otras 2 maquinas.
 - **Un worker se queda "colgado" esperando**: revisar que las 3 maquinas
   puedan verse por red (`ping <ip>`), que el puerto no este bloqueado por el
   firewall (`sudo ufw status` / `sudo firewall-cmd --list-ports`), y que el
