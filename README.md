@@ -501,3 +501,35 @@ y la logica de distribucion no cambian.
   `MultiWorkerMirroredStrategy` todos los workers deben seguir vivos durante
   todo el entrenamiento (es una operacion colectiva); si una maquina se cae
   hay que reiniciar el entrenamiento en las 3.
+- **`ValueError: Layer 'conv2d' expected 2 variables, but received 0
+  variables` al cargar `fashion_mnist_distribuido.keras`**: no es un
+  problema del entrenamiento — un `.keras` recien generado por `train.py`
+  carga bien con `tf.keras.models.load_model(...)` (verificado). Este error
+  aparece cuando el archivo se **daña al transferirlo**: un `.keras` ya es,
+  internamente, un archivo `.zip`; si se lo vuelve a comprimir con
+  "Enviar a > Carpeta comprimida" (Windows) o similar, el contenedor
+  resultante deja de ser valido para el lector de TensorFlow aunque
+  `Expand-Archive`/`unzip` lo puedan abrir sin quejarse. Para pasarlo a otra
+  maquina, copiar el archivo `.keras` tal cual (`scp`, USB, adjunto), sin
+  comprimirlo de nuevo.
+
+## 13. Generar un informe con graficas y predicciones
+
+Con un `fashion_mnist_distribuido.keras` valido en la carpeta del proyecto
+(y `data/fashion_mnist_test.npz` generado por `data_prep.py`):
+
+```bash
+pip install -r requirements-report.txt
+python generate_report_assets.py   # genera report_assets/*.png a partir del modelo real
+python build_report.py             # arma INFORME_FINAL.pdf con esas graficas y las metricas de train_worker0.log
+```
+
+`generate_report_assets.py` carga el modelo, evalua sobre el test set y
+genera 3 imagenes (exactitud por epoca, perdida por epoca, y una muestra de
+10 predicciones con acierto/error marcado en verde/rojo). `build_report.py`
+arma el PDF final con esas imagenes mas las metricas por epoca que ya
+quedaron impresas en `train_worker0.log` durante el entrenamiento — si
+cambian los numeros de esas epocas (otra corrida), hay que actualizar las
+listas `TRAIN_LOSS`/`TRAIN_ACC`/`VAL_LOSS`/`VAL_ACC` al principio de
+`generate_report_assets.py` y las correspondientes en `build_report.py`
+con los valores nuevos del log.
