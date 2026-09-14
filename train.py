@@ -24,6 +24,14 @@ import os
 
 os.environ.setdefault("TF_USE_LEGACY_KERAS", "1")
 
+# Fuerza a que las 3 maquinas usen solo CPU, aunque alguna tenga GPU.
+# MultiWorkerMirroredStrategy elige automaticamente NCCL cuando detecta GPU,
+# pero NCCL no soporta workers sin GPU: si el cluster es heterogeneo (unas
+# maquinas con GPU y otras sin), la sincronizacion de gradientes falla con
+# errores tipo "Aborting RingReduce ... unknown device". Como este modelo es
+# chico y no necesita GPU, lo mas simple y robusto es desactivarla en todas.
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "-1")
+
 import numpy as np
 import tensorflow as tf
 
@@ -70,7 +78,15 @@ def main():
     tf_config = json.loads(os.environ.get("TF_CONFIG", "{}"))
     print(f"TF_CONFIG detectado: {tf_config or '(vacio -> modo 1 maquina)'}")
 
-    strategy = tf.distribute.MultiWorkerMirroredStrategy()
+    # Se fuerza RING (en vez de dejar el AUTO por defecto) porque RING
+    # funciona por gRPC y soporta CPU; AUTO puede elegir NCCL si alguna
+    # maquina del cluster tiene GPU, y NCCL no funciona con workers en CPU.
+    communication_options = tf.distribute.experimental.CommunicationOptions(
+        implementation=tf.distribute.experimental.CommunicationImplementation.RING
+    )
+    strategy = tf.distribute.MultiWorkerMirroredStrategy(
+        communication_options=communication_options
+    )
     num_workers = strategy.num_replicas_in_sync
     print(f"Numero de workers sincronizando gradientes: {num_workers}")
 

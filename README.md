@@ -439,17 +439,25 @@ y la logica de distribucion no cambian.
   protocolo al conectar los workers; usar la misma version en las 3 (fijada
   en `requirements.txt`, instalada dentro del `.venv` de cada una).
 - **`InvalidArgumentError` / `Aborting RingReduce` / `.../device:CPU:0
-  unknown device` a mitad del entrenamiento**: el sincronismo de gradientes
-  entre los 3 workers quedo en un estado inconsistente. Las 2 causas mas
-  comunes:
+  unknown device`, ya arrancado el entrenamiento (llega a imprimir
+  `Epoch 1/10` y ahi se cae)**: causa mas probable, **cluster heterogeneo**
+  (alguna de las 3 maquinas tiene GPU y las otras no). Por defecto,
+  `MultiWorkerMirroredStrategy` elige automaticamente el metodo de
+  comunicacion NCCL si detecta una GPU en cualquier maquina, pero NCCL no
+  funciona con workers que solo tienen CPU — eso rompe la sincronizacion de
+  gradientes con exactamente este error. **Ya corregido en `train.py`**:
+  ahora fuerza `CUDA_VISIBLE_DEVICES=-1` (todas las maquinas usan CPU, sin
+  importar si alguna tiene GPU) y fija explicitamente el metodo de
+  comunicacion en `RING` (compatible con CPU). Si te sigue pasando esto
+  despues de actualizar (`git pull` en las 3 maquinas), revisa estas otras
+  2 causas, menos probables pero posibles:
   1. **Solo se reinicio 1 o 2 workers, no los 3.** Si un worker se cae o lo
      relanzas para corregir algo (ej. activar el `.venv`) mientras los otros
      siguen corriendo desde un intento anterior, el grupo de coordinacion
      queda desincronizado. Solucion: matar los 3 procesos
      (`pkill -f train.py` en cada maquina, o `Ctrl+C` donde este visible) y
      volver a lanzar `train.py` en las 3 **al mismo tiempo, desde cero**.
-  2. **Versiones de TensorFlow distintas entre maquinas** (ver el punto
-     anterior): confirmar con
+  2. **Versiones de TensorFlow distintas entre maquinas**: confirmar con
      `python -c "import tensorflow as tf; print(tf.__version__)"` en las 3
      y reinstalar con `pip install -r requirements.txt --upgrade` donde no
      coincida.
